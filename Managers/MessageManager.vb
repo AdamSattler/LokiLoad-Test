@@ -1,224 +1,127 @@
 ﻿Imports LokiLoad.Test.GSMConnector.GSM.Models
+Imports System.Configuration
+Imports System.Runtime.Remoting.Messaging
 
 Public Class MessageManager
-
-    Private Shared Property ATSLogin As String = System.Configuration.ConfigurationManager.AppSettings("ATSLogin")
-
-    Private Shared Property ATSPassword As String = System.Configuration.ConfigurationManager.AppSettings("ATSPassword")
-
-    Private Shared Property DaktelaLogin As String = System.Configuration.ConfigurationManager.AppSettings("DaktelaLogin")
-
-    Private Shared Property DaktelaPassword As String = System.Configuration.ConfigurationManager.AppSettings("DaktelaPassword")
-
-    Public Shared Property UseDaktela As Boolean
 
     Private ReadOnly _logger As ILogger
 
     Private ReadOnly _gsmServiceClientFactory As IGSMServiceClientFactory
 
-    Public Sub New(logger As ILogger, gsmServiceClientFactory As IGSMServiceClientFactory)
+    Private ReadOnly _smsGateCredentialProvider As ISMSGateCredentialProvider
+
+    Public Shared Property UseDaktela As Boolean
+
+    Public Sub New(logger As ILogger, gsmServiceClientFactory As IGSMServiceClientFactory, smsGateCredentialProvider As ISMSGateCredentialProvider)
 
         _logger = logger
         _gsmServiceClientFactory = gsmServiceClientFactory
+        _smsGateCredentialProvider = smsGateCredentialProvider
 
     End Sub
 
-    Public Sub SendSMSMessage(ByVal myMessage As Message)
-        Dim debugMode As Boolean = False
-        Dim debugTo() As String = {}
+    Public Sub SendSMSMessage(ByVal message As Message)
 
-        If System.Configuration.ConfigurationManager.AppSettings("DebugMode") IsNot Nothing AndAlso System.Configuration.ConfigurationManager.AppSettings("DebugMode").ToLowerInvariant = "true" AndAlso System.Configuration.ConfigurationManager.AppSettings("Messages.GSM.Debug.To") IsNot Nothing AndAlso Not String.IsNullOrEmpty(System.Configuration.ConfigurationManager.AppSettings("Messages.GSM.Debug.To")) Then
-            debugMode = True
-            debugTo = System.Configuration.ConfigurationManager.AppSettings("Messages.GSM.Debug.To").Replace(",", ";").Split(";")
+        'INFO: Získám seznam příjemců
+        Dim recipients = GetRecipients(message)
+
+        'INFO: Získám přihlašovací ůdaje
+        Dim credentials = _smsGateCredentialProvider.GetSMSGateCredentials(message, UseDaktela)
+
+        'INFO: Odešleme zprávu
+        SendMessageViaGateway(message, recipients, credentials)
+
+    End Sub
+
+#Region "Recipients"
+    Private Function GetRecipients(message As Message) As IEnumerable(Of String)
+
+        'INFO: Pokud máme debug mod, získáme příjemce z app settings
+        If IsDebugMode() Then
+            Return GetDebugRecipients()
         End If
 
-        Dim finalTarget As New List(Of String)
+        Dim recipients = New List(Of String) From {message.Target}
 
-        If debugMode Then
+        If Not String.IsNullOrEmpty(message.TargetCC) Then
+            recipients.Add(message.TargetCC)
+        End If
 
-            For Each t As String In debugTo
-                finalTarget.Add(t)
+        If Not String.IsNullOrEmpty(message.TargetBCC) Then
+            recipients.Add(message.TargetBCC)
+        End If
+
+        Return recipients
+
+    End Function
+
+    Private Function IsDebugMode() As Boolean
+
+        Dim debugModeSetting = ConfigurationManager.AppSettings(Consts.Settings.DebugMode)
+        Dim debugToSetting = ConfigurationManager.AppSettings(Consts.Settings.MessagesDebugTo)
+
+        Return debugModeSetting IsNot Nothing AndAlso
+               debugModeSetting.Equals("true", StringComparison.InvariantCultureIgnoreCase) AndAlso
+               debugToSetting IsNot Nothing AndAlso
+               Not String.IsNullOrEmpty(debugToSetting)
+
+    End Function
+
+    Private Function GetDebugRecipients() As IEnumerable(Of String)
+
+        Dim debugTo = ConfigurationManager.AppSettings(Consts.Settings.MessagesDebugTo)
+        Return debugTo.Replace(",", ";").Split(";")
+
+    End Function
+#End Region
+
+#Region "Send Message"
+    Private Sub SendMessageViaGateway(message As Message, recipients As IEnumerable(Of String), credentials As SMSGateCredentials)
+
+        'INFO: Vytvoříme nový disposable GSMServiceClient
+        Using client = _gsmServiceClientFactory.CreateClient()
+
+            'INFO: Odesíláme zprávy jednotlivým příjemcům
+            For Each target In recipients
+                Try
+                    SendSingleMessage(client, message, target, credentials)
+                    _logger.GetDefaultLogger.Write(LoggerMessageLevel.Info, "SMS X-Message-ID={0} to {1} send.", message.Id, target)
+                Catch ex As Exception
+                    HandleSendError(ex, message, target)
+                End Try
             Next
-
-        Else
-            finalTarget.Add(myMessage.Target)
-
-            If Not String.IsNullOrEmpty(myMessage.TargetCC) Then
-                finalTarget.Add(myMessage.TargetCC)
-            End If
-
-            If Not String.IsNullOrEmpty(myMessage.TargetBCC) Then
-                finalTarget.Add(myMessage.TargetBCC)
-            End If
-
-        End If
-
-
-        'INFO: Odesilam podle SMSGate
-        If myMessage.SmsGate.HasValue AndAlso myMessage.SmsGate.Value = MessageSMSGate.ATS Then
-            'INFO: Výběr GSM Brány
-            Dim ATSGSMLogin As String = ATSLogin
-            Dim ATSGSMPassword As String = ATSPassword
-
-            Using service As IGSMServiceClient = _gsmServiceClientFactory.CreateClient()
-
-                For Each target As String In finalTarget
-
-                    Try
-                        myMessage.DateOfSend = Now
-                        Dim resSendSMS As GSMConnector.GSM.Models.WSMessageSendResponse = service.SendSMS(ATSGSMLogin, ATSGSMPassword, target, myMessage.Body, "", "", "", True, Nothing, Nothing)
-                        If resSendSMS.Result Then
-
-                            myMessage.ExternalId = resSendSMS.IdMessage
-
-                            myMessage.Status = MessageStatus.Sending
-                            MessageManager.Save(myMessage, False)
-                            _logger.GetDefaultLogger.Write(LoggerMessageLevel.Info, "SMS X-Message-ID={0} to {1} send by ATS.", myMessage.Id, target)
-
-                        Else
-                            myMessage.Status = MessageStatus.Error
-                            MessageManager.Save(myMessage, False)
-
-                            _logger.GetDefaultLogger.Write(LoggerMessageLevel.Error, "Error sending SMS X-Message-ID={0} by ATS to {1}, {2}", myMessage.Id, target, resSendSMS.ResultMessage)
-                        End If
-
-
-                    Catch ex As Exception
-                        If ex.ToString.Contains("Nepodarilo se odeslat SMS Ex: Telefon nema nutnych 9 znaku") Then
-                            _logger.GetDefaultLogger.Write(LoggerMessageLevel.Info, "Message Id={0} to {1} - " + ex.ToString, myMessage.Id, target)
-
-                            myMessage.Status = MessageStatus.Error
-                            MessageManager.Save(myMessage, False)
-                        Else
-                            Throw ex
-                        End If
-                    End Try
-
-
-                Next
-
-            End Using
-        ElseIf myMessage.SmsGate.HasValue AndAlso myMessage.SmsGate.Value = MessageSMSGate.Daktela Then
-            'INFO: Výběr GSM Brány
-            Dim DaktelaGSMLogin As String = DaktelaLogin
-            Dim DaktelaGSMPassword As String = DaktelaPassword
-
-            Using service As IGSMServiceClient = _gsmServiceClientFactory.CreateClient()
-
-                For Each target As String In finalTarget
-
-                    Try
-                        myMessage.DateOfSend = Now
-                        Dim resSendSMS As GSMConnector.GSM.Models.WSMessageSendResponse = service.SendSMS(DaktelaGSMLogin, DaktelaGSMPassword, target, myMessage.Body, "", "", "", True, Nothing, Nothing)
-                        If resSendSMS.Result Then
-
-                            myMessage.ExternalId = resSendSMS.IdMessage
-
-                            myMessage.Status = MessageStatus.Sending
-                            MessageManager.Save(myMessage, False)
-                            _logger.GetDefaultLogger.Write(LoggerMessageLevel.Info, "SMS X-Message-ID={0} to {1} send by ATS.", myMessage.Id, target)
-
-                        Else
-                            myMessage.Status = MessageStatus.Error
-                            MessageManager.Save(myMessage, False)
-
-                            _logger.GetDefaultLogger.Write(LoggerMessageLevel.Error, "Error sending SMS X-Message-ID={0} by ATS to {1}, {2}", myMessage.Id, target, resSendSMS.ResultMessage)
-                        End If
-
-
-                    Catch ex As Exception
-                        If ex.ToString.Contains("Nepodarilo se odeslat SMS Ex: Telefon nema nutnych 9 znaku") Then
-                            _logger.GetDefaultLogger.Write(LoggerMessageLevel.Info, "Message Id={0} to {1} - " + ex.ToString, myMessage.Id, target)
-
-                            myMessage.Status = MessageStatus.Error
-                            MessageManager.Save(myMessage, False)
-                        Else
-                            Throw ex
-                        End If
-                    End Try
-
-
-                Next
-
-            End Using
-        Else
-            'INFO: Výběr GSM Brány
-            Dim GSMLogin As String
-            Dim GSMPassword As String
-
-            If myMessage.Kind.HasValue AndAlso myMessage.Kind.Value = MessageKind.SMSCampaign Then
-                Dim simSetting As SimSettings = SimSettingsManager.GetSimSettingForMessage(myMessage.Environment, SimSettingsType.Campaigne)
-                If simSetting IsNot Nothing Then
-                    myMessage.GatewayId = simSetting.GatewayId
-                    GSMLogin = simSetting.Login
-                    GSMPassword = simSetting.Password
-                Else
-
-                    _logger.GetDefaultLogger.Write(LoggerMessageLevel.Error, "Error sending SMS - Not more SIM Campaigne space. Message-ID={0} to {1}", myMessage.Id, myMessage.Target)
-                    Throw New Exception("Error sending SMS - Not more SIM Campaigne space.")
-                End If
-
-            Else
-                Dim simSetting As SimSettings = SimSettingsManager.GetSimSettingForMessage(myMessage.Environment, SimSettingsType.Standard)
-                If simSetting IsNot Nothing Then
-                    myMessage.GatewayId = simSetting.GatewayId
-                    GSMLogin = simSetting.Login
-                    GSMPassword = simSetting.Password
-                Else
-                    If UseDaktela Then
-                        GSMLogin = DaktelaLogin
-                        GSMPassword = DaktelaPassword
-                        myMessage.GatewayId = 100
-                    Else
-                        _logger.GetDefaultLogger.Write(LoggerMessageLevel.Error, "Error sending SMS - Not more SIM Standard space. Message-ID={0} to {1}", myMessage.Id, myMessage.Target)
-                        Throw New Exception("Error sending SMS - Not more SIM Standard space.")
-                    End If
-                End If
-
-            End If
-
-            Using service As IGSMServiceClient = _gsmServiceClientFactory.CreateClient()
-
-                For Each target As String In finalTarget
-
-                    Try
-                        myMessage.DateOfSend = Now
-                        Dim resSendSMS As GSMConnector.GSM.Models.WSMessageSendResponse = service.SendSMS(GSMLogin, GSMPassword, target, myMessage.Body, "", "", "", True, Nothing, Nothing)
-                        If resSendSMS.Result Then
-
-                            myMessage.ExternalId = resSendSMS.IdMessage
-
-                            myMessage.Status = MessageStatus.Sending
-                            MessageManager.Save(myMessage, False)
-                            _logger.GetDefaultLogger.Write(LoggerMessageLevel.Info, "SMS X-Message-ID={0} to {1} send.", myMessage.Id, target)
-
-                        Else
-                            myMessage.Status = MessageStatus.Error
-                            MessageManager.Save(myMessage, False)
-
-                            _logger.GetDefaultLogger.Write(LoggerMessageLevel.Error, "Error sending SMS X-Message-ID={0} to {1}, {2}", myMessage.Id, target, resSendSMS.ResultMessage)
-                        End If
-
-
-                    Catch ex As Exception
-                        If ex.ToString.Contains("Nepodarilo se odeslat SMS Ex: Telefon nema nutnych 9 znaku") Then
-                            _logger.GetDefaultLogger.Write(LoggerMessageLevel.Info, "Message Id={0} to {1} - " + ex.ToString, myMessage.Id, target)
-
-                            myMessage.Status = MessageStatus.Error
-                            MessageManager.Save(myMessage, False)
-                        Else
-                            Throw ex
-                        End If
-                    End Try
-
-
-                Next
-
-            End Using
-        End If
-
+        End Using
 
     End Sub
+
+    Private Sub SendSingleMessage(client As IGSMServiceClient, message As Message,
+                                target As String, credentials As SMSGateCredentials)
+        message.DateOfSend = DateTime.Now
+        Dim response = client.SendSMS(credentials.Login, credentials.Password, target, message.Body, "", "", "", True, Nothing, Nothing)
+
+        If response.Result Then
+            message.ExternalId = response.IdMessage
+            message.Status = MessageStatus.Sending
+            MessageManager.Save(message, False)
+        Else
+            message.Status = MessageStatus.Error
+            MessageManager.Save(message, False)
+            _logger.GetDefaultLogger.Write(LoggerMessageLevel.Error, "Error sending SMS X-Message-ID={0} by ATS to {1}, {2}", message.Id, target, response.ResultMessage)
+        End If
+    End Sub
+#End Region
+
+#Region "Error Handle"
+    Private Sub HandleSendError(ex As Exception, message As Message, target As String)
+        If ex.ToString().Contains("Nepodarilo se odeslat SMS Ex: Telefon nema nutnych 9 znaku") Then
+            _logger.GetDefaultLogger.Write(LoggerMessageLevel.Info, "Message Id={0} to {1} - " + ex.ToString, message.Id, target)
+            message.Status = MessageStatus.Error
+            MessageManager.Save(message, False)
+        Else
+            Throw ex
+        End If
+    End Sub
+#End Region
 
     Private Shared Function Save(myMessage As Message, b As Boolean) As WSMessageSendResponse
         ' TODO: Implement

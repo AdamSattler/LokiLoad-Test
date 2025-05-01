@@ -87,12 +87,16 @@
   <ItemGroup>
     <Compile Include="Clients\GSMServiceSoapClient.vb" />
     <Compile Include="Clients\IGSMServiceClient.vb" />
+    <Compile Include="Consts.vb" />
     <Compile Include="Factories\GSMServiceClientFactory.vb" />
     <Compile Include="Factories\IGSMServiceClientFactory.vb" />
     <Compile Include="ILogger.vb" />
     <Compile Include="Logger.vb" />
     <Compile Include="Models\Message.vb" />
     <Compile Include="Managers\MessageManager.vb" />
+    <Compile Include="Models\SMSGateCredential\SMSGateCredentialDaktela.vb" />
+    <Compile Include="Models\SMSGateCredential\SMSGateCredentialATS.vb" />
+    <Compile Include="Models\SMSGateCredential\SMSGateCredentials.vb" />
     <Compile Include="Models\WSMessageSendResponse.vb" />
     <Compile Include="My Project\AssemblyInfo.vb" />
     <Compile Include="My Project\Application.Designer.vb">
@@ -111,6 +115,8 @@
     </Compile>
     <Compile Include="Models\SimSettings.vb" />
     <Compile Include="Managers\SimSettingsManager.vb" />
+    <Compile Include="Providers\ISMSGateCredentialProvider.vb" />
+    <Compile Include="Providers\SMSGateCredentialProvider.vb" />
   </ItemGroup>
   <ItemGroup>
     <EmbeddedResource Include="My Project\Resources.resx">

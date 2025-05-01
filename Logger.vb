@@ -19,4 +19,5 @@ Public Enum LoggerMessageLevel
 
     Info
     [Error]
+
 End Enum
