@@ -76,7 +76,6 @@ Public Class MessageManager
                             _logger.GetDefaultLogger.Write(LoggerMessageLevel.Info, "SMS X-Message-ID={0} to {1} send by ATS.", myMessage.Id, target)
 
                         Else
-                            'Log("Zprava nebyla odeslana Result: " + resSendSMS.ResultMessage)
                             myMessage.Status = MessageStatus.Error
                             MessageManager.Save(myMessage, False)
 
@@ -120,7 +119,6 @@ Public Class MessageManager
                             _logger.GetDefaultLogger.Write(LoggerMessageLevel.Info, "SMS X-Message-ID={0} to {1} send by ATS.", myMessage.Id, target)
 
                         Else
-                            'Log("Zprava nebyla odeslana Result: " + resSendSMS.ResultMessage)
                             myMessage.Status = MessageStatus.Error
                             MessageManager.Save(myMessage, False)
 
@@ -144,9 +142,6 @@ Public Class MessageManager
 
             End Using
         Else
-
-
-
             'INFO: Výběr GSM Brány
             Dim GSMLogin As String
             Dim GSMPassword As String
@@ -163,14 +158,6 @@ Public Class MessageManager
                     Throw New Exception("Error sending SMS - Not more SIM Campaigne space.")
                 End If
 
-                'If MaxCampaignSMS < TodaySendSMSCampaign(myMessage.Environment) Then
-                '    Exit Sub
-                'End If
-                'Dim gateWay As Integer = GetLastUsedGatewayCampaign(myMessage.Environment) + 1 - 100
-                'If gateWay > NumberOfCampaignGateway OrElse gateWay = -99 Then gateWay = 1
-                'myMessage.GatewayId = gateWay + 100
-                'GSMLogin = GetSMSLoginForGatewayCampaign(gateWay)
-                'GSMPassword = GetSMSPasswordForGatewayCampaign(gateWay)
             Else
                 Dim simSetting As SimSettings = SimSettingsManager.GetSimSettingForMessage(myMessage.Environment, SimSettingsType.Standard)
                 If simSetting IsNot Nothing Then
@@ -188,32 +175,7 @@ Public Class MessageManager
                     End If
                 End If
 
-
-                'Dim daktela As Boolean = False
-                'If UseDaktela AndAlso MaxStandardSMS.HasValue Then
-                '    If MaxStandardSMS < TodaySendSMS(myMessage.Environment) Then
-                '        daktela = True
-                '    End If
-                'End If
-                'If daktela Then
-                '    GSMLogin = DaktelaLogin
-                '    GSMPassword = DaktelaPassword
-                '    myMessage.GatewayId = 100
-                'Else
-
-
-                '    SimSettingsManager.
-                '    Dim gateWay As Integer = GetLastUsedGateway(myMessage.Environment) + 1
-                '    ' Logger.GetDefaultLogger.Write(LoggerMessageLevel.Info, "SendSMSMessage - GateWay1=" + gateWay.ToString + ", NumberOfStandardGateway=" + NumberOfStandardGateway.ToString)
-                '    If gateWay > NumberOfStandardGateway Then gateWay = 1
-                '    ' Logger.GetDefaultLogger.Write(LoggerMessageLevel.Info, "SendSMSMessage - GateWayFinal=" + gateWay.ToString)
-                '    myMessage.GatewayId = gateWay
-                '    GSMLogin = GetSMSLoginForGateway(gateWay)
-                '    GSMPassword = GetSMSPasswordForGateway(gateWay)
-                'End If
             End If
-
-
 
             Using service As IGSMServiceClient = _gsmServiceClientFactory.CreateClient()
 
@@ -231,7 +193,6 @@ Public Class MessageManager
                             _logger.GetDefaultLogger.Write(LoggerMessageLevel.Info, "SMS X-Message-ID={0} to {1} send.", myMessage.Id, target)
 
                         Else
-                            'Log("Zprava nebyla odeslana Result: " + resSendSMS.ResultMessage)
                             myMessage.Status = MessageStatus.Error
                             MessageManager.Save(myMessage, False)
 
