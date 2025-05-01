@@ -1,6 +1,5 @@
 ﻿Imports LokiLoad.Test.GSMConnector.GSM.Models
 Imports System.Configuration
-Imports System.Runtime.Remoting.Messaging
 
 Public Class MessageManager
 
