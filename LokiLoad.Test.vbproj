@@ -1,4 +1,4 @@
-<?xml version="1.0" encoding="utf-8"?>
+﻿<?xml version="1.0" encoding="utf-8"?>
 <Project ToolsVersion="15.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
   <Import Project="$(MSBuildExtensionsPath)\$(MSBuildToolsVersion)\Microsoft.Common.props" Condition="Exists('$(MSBuildExtensionsPath)\$(MSBuildToolsVersion)\Microsoft.Common.props')" />
   <PropertyGroup>
@@ -85,10 +85,15 @@
     <Import Include="System.Threading.Tasks" />
   </ItemGroup>
   <ItemGroup>
-    <Compile Include="GSMServiceSoapClient.vb" />
+    <Compile Include="Clients\GSMServiceSoapClient.vb" />
+    <Compile Include="Clients\IGSMServiceClient.vb" />
+    <Compile Include="Factories\GSMServiceClientFactory.vb" />
+    <Compile Include="Factories\IGSMServiceClientFactory.vb" />
+    <Compile Include="ILogger.vb" />
     <Compile Include="Logger.vb" />
-    <Compile Include="Message.vb" />
-    <Compile Include="MessageManager.vb" />
+    <Compile Include="Models\Message.vb" />
+    <Compile Include="Managers\MessageManager.vb" />
+    <Compile Include="Models\WSMessageSendResponse.vb" />
     <Compile Include="My Project\AssemblyInfo.vb" />
     <Compile Include="My Project\Application.Designer.vb">
       <AutoGen>True</AutoGen>
@@ -104,8 +109,8 @@
       <DependentUpon>Settings.settings</DependentUpon>
       <DesignTimeSharedInput>True</DesignTimeSharedInput>
     </Compile>
-    <Compile Include="SimSettings.vb" />
-    <Compile Include="SimSettingsManager.vb" />
+    <Compile Include="Models\SimSettings.vb" />
+    <Compile Include="Managers\SimSettingsManager.vb" />
   </ItemGroup>
   <ItemGroup>
     <EmbeddedResource Include="My Project\Resources.resx">
